@@ -709,6 +709,43 @@ class Coqtail:
         if err != "":
             self.set_info("From stderr:\n" + err, reset=False)
 
+
+    @property
+    def highlight_indices(self) -> Dict[str, Tuple[int, int, int, int]]:
+        """Returns just the indices used for each highlight."""
+        indices: Dict[str, Tuple[int, int, int, int]] = {
+            "checked": (0, 0, 0, 0),
+            "sent": (0, 0, 0, 0),
+            "error": (0, 0, 0, 0),
+            "omitted": (0, 0, 0, 0),
+        }
+
+        if self.endpoints != []:
+            line, col = self.endpoints[-1]
+            indices["checked"] = (0, line + 1, 0, col)
+
+        if self.send_queue:
+            sline, scol = self.endpoints[-1] if self.endpoints != [] else (0, -1)
+            eline, ecol = self.send_queue[-1]["stop"]
+            indices["sent"] = (sline, eline + 1, scol, ecol)
+
+        if self.error_at is not None:
+            (sline, scol), (eline, ecol) = self.error_at
+            indices["error"] = (sline, eline + 1, scol, ecol)
+
+        if self.omitted_proofs != []:
+            # Use a list of ranges for "omitted"
+            omitted_indices = []
+            for pstart, pend in self.omitted_proofs:
+                for range_ in (pstart, pend):
+                    sline, scol = range_["start"]
+                    eline, ecol = range_["stop"]
+                    omitted_indices.append((sline, eline + 1, scol, ecol))
+            indices["omitted"] = omitted_indices
+
+        return indices
+
+
     @property
     def highlights(self) -> Dict[str, Optional[Union[str, List[Tuple[int, int, int]]]]]:
         """Vim match patterns for highlighting."""
@@ -1002,6 +1039,7 @@ class CoqtailHandler(StreamRequestHandler):
                 self.sync,
                 self.bnum,
                 self.coq.highlights,
+                self.coq.highlight_indices,
                 self.coq.panels(goals),
                 scroll,
             )

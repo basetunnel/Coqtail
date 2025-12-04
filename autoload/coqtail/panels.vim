@@ -225,9 +225,17 @@ function! s:clearhl() abort
   unlet! w:coqtail_highlights
 endfunction
 
+function! s:clearpadding() abort
+  if exists('w:highlight_paddings')
+    call nvim_buf_clear_namespace(bufnr('%'), w:highlight_paddings, 0, -1)
+  endif
+endfunction
+
+
 function! coqtail#panels#cleanuphl() abort
   if exists('w:coqtail_highlights') && w:coqtail_highlights['buf'] != bufnr('%')
     call s:clearhl()
+   call s:clearpadding()
   endif
 endfunction
 
@@ -251,6 +259,29 @@ function! s:updatehl(buf, highlights) abort
   endfor
 endfunction
 
+" update the padding (virtual text) highlights
+function! s:updatepadding(buf, highlight_indices) abort
+  call s:clearpadding()
+  if !exists('w:highlight_paddings')
+    let w:highlight_paddings = nvim_create_namespace('highlight_paddings')
+  endif
+
+  for [l:var, l:grp] in s:hlgroups
+    let [sline, eline, scol, ecol] = a:highlight_indices[l:var]
+    let virtual_text = repeat(' ', 300)
+
+    " don't include the last, current, line, hence eline - 2
+    if eline > sline + 1
+      for l:line in range(sline, eline - 2)
+        call nvim_buf_set_extmark(a:buf, w:highlight_paddings, l:line, 0, {
+          \ 'virt_text': [[virtual_text, l:grp]],
+          \ 'virt_text_pos': 'eol',
+          \ })
+      endfor
+    endif
+  endfor
+endfunction
+
 " Close auxiliary panels and clear highlighting.
 function! coqtail#panels#hide() abort
   if coqtail#panels#switch(g:coqtail#panels#main) == g:coqtail#panels#none
@@ -258,6 +289,7 @@ function! coqtail#panels#hide() abort
   endif
 
   call s:clearhl()
+  call s:clearpadding()
 
   " Hide other panels
   let l:toclose = []
@@ -317,7 +349,7 @@ function! s:replace(panel, txt, richpp, scroll) abort
 endfunction
 
 " Refresh the highlighting and auxiliary panels.
-function! coqtail#panels#refresh(buf, highlights, panels, scroll) abort
+function! coqtail#panels#refresh(buf, highlights, highlight_indices, panels, scroll) abort
   " Catch interrupt instead of aborting
   try
     let l:winids = win_findbuf(a:buf)
@@ -335,6 +367,11 @@ function! coqtail#panels#refresh(buf, highlights, panels, scroll) abort
         \ l:winid,
         \ function('s:updatehl'),
         \ [a:buf, a:highlights],
+        \ 0)
+      call coqtail#compat#win_call(
+        \ l:winid,
+        \ function('s:updatepadding'),
+        \ [a:buf, a:highlight_indices],
         \ 0)
     endfor
 
@@ -379,6 +416,11 @@ function! coqtail#panels#cleanup() abort
       call coqtail#compat#win_call(
         \ l:winid,
         \ function('s:clearhl'),
+        \ [],
+        \ 0)
+      call coqtail#compat#win_call(
+        \ l:winid,
+        \ function('s:clearpadding'),
         \ [],
         \ 0)
     endfor
